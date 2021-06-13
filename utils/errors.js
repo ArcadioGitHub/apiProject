@@ -20,7 +20,7 @@ class NotFound extends GeneralError {
 class ServerError extends GeneralError {
 }
 
-const handleErrors = (err, req, res, next) => {
+const handleErrors =  (err, req, res, next) => {
   if (err instanceof GeneralError) {
     return res.status(err.getCode()).json({
       status: 'error',
