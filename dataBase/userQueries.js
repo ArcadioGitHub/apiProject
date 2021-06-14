@@ -14,6 +14,10 @@ const deleteUser = (id) => {
     return `DELETE FROM users WHERE id = ${id}`;
 }
 
+const deleteUsers = () => {
+    return 'DELETE FROM users';
+}
+
 const updateUser = (firstName, lastName, age, id) => {
     return `UPDATE users SET firstname = '${firstName}' , lastname = '${lastName}' , age = ${age} WHERE ID = ${id}`;
 }
@@ -23,5 +27,6 @@ export default {
     getUsers,
     createUser,
     deleteUser,
+    deleteUsers,
     updateUser
 }
