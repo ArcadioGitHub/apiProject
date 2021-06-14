@@ -1,98 +1,112 @@
-import errors from '../utils/errors.js';
 import constants from '../constants/constantes.js';
 import queryExecutor from '../dataBase/dataBase.js';
-import queries from '../dataBase/queries.js';
+import queries from '../dataBase/userQueries.js';
+import { ReasonPhrases, StatusCodes, getReasonPhrase, getStatusCode, } from 'http-status-codes';
 
-export const getUsers = (req, res) => {
+
+export const getUsers = async function (req, res, next) {
     try {
-        queryExecutor(queries.getUsers()).then(result => {
-            res.send(result.rows)
-        }).catch(err => { console.log(err) });
+        const users = await queryExecutor(queries.getUsers());
+        if (users.rowCount == 0) {
+            res.status(StatusCodes.OK).json({ message: constants.NO_USERS_YET })
+        } else {
+            res.status(StatusCodes.OK).send(users.rows);
+        }
     }
     catch (error) {
-        throw new errors.ServerError(`${constants.SERVER_ERROR} ${error}`);
+        next(error);
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+            .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });
     }
 };
 
-export const getUser = (req, res) => {
-    const id = req.params.id;
-    try {
-        queryExecutor(queries.getUser(id)).then(result => {
-            if (result.rows.length == 0) {
-                res.status(400).json({ status: 'error', message: constants.USER_NOT_FOUND });
+export const getUser = async function (req, res, next) {
+    const id = parseInt(req.params.id);
+    if (!Number.isInteger(id)) {
+        res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.ID_MUST_BE_NUMBER }).send();
+    } else {
+        try {
+            const user = await queryExecutor(queries.getUser(id));
+            if (user.rowCount == 0) {
+                res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.USER_NOT_FOUND }).send();
             } else {
-                res.send(result.rows)
+                res.send(user.rows);
             }
-        }).catch(err => { console.log(err) });
-    } catch (error) {
-        throw new errors.ServerError(`${constants.SERVER_ERROR} ${error}`);
-    };
-
+        } catch (error) {
+            next(error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+                .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });
+        };
+    }
 };
 
-export const createUsers = (req, res) => {
+export const createUsers = async function (req, res, next) {
     let { firstName, lastName, age } = req.body;
     if (!firstName || !lastName || !age) {
-        throw new errors.BadRequest(constants.MISSING_REQUESTED_FIELDS);
+        res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.MISSING_REQUESTED_FIELDS })
+            .send();
+    } else {
+        try {
+            const user = { firstName, lastName, age };
+            await queryExecutor(queries.createUser(user.firstName, user.lastName, user.age));
+            res.status(StatusCodes.CREATED).json({ message: `${constants.USER_SUCCESFULLY_CREATED}`, user })
+                .send();
+        } catch (error) {
+            next(error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+                .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });
+        };
     }
-    const user = { firstName, lastName, age };
+};
+
+export const deleteUser = async function (req, res, next) {
+    const id = req.params.id;
     try {
-        queryExecutor(queries.createUser(user.firstName, user.lastName, user.age))
-            .then(() => {
-                res.json({ message: `${constants.USER_SUCCESFULLY_CREATED}`, user });
-                res.send();
-            }).catch(err => { console.log(err) });
+        const userToBeDeleted = await queryExecutor(queries.deleteUser(id));
+        if (userToBeDeleted.rowCount == 0) {
+            res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.FAILED_DELETE });
+        } else {
+            res.status(StatusCodes.OK).json({ status: 'success', message: `${constants.SUCCESS_DELETE} ${id}` });
+        }
     } catch (error) {
-        throw new errors.ServerError(`${constants.SERVER_ERROR}, ${error}`);
+        next(error);
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+            .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });
     };
 };
 
-export const deleteUser = (req, res) => {
+export const updateUser = async function (req, res, next) {
     const id = req.params.id;
+    let { firstName, lastName, age } = req.body;
     try {
-        queryExecutor(queries.getUser(id)).then(result => {
-            if (result.rows.length == 0) res.status(400).json({ status: 'error', message: constants.FAILED_DELETE });
-        }).catch(err => { console.log(err) });
-
-        queryExecutor(queries.deleteUser(id))
-            .then(() => {
-                res.json({ message: `${constants.SUCCESS_DELETE} ${id}` });
-                res.send();
-            }).catch(err => { console.log(err) });
-    } catch (error) {
-        throw new errors.ServerError(`${constants.SERVER_ERROR}, ${error}`);
-    };
-};
-
-export const updateUser = (req, res) => {
-    const id = req.params.id;
-    try {
-        queryExecutor(queries.getUser(id)).then(result => {
-            if (result.rows.length == 0) res.status(400).json({ status: 'error', message: constants.FAILED_UPDATE });
-        }).catch(err => { console.log(err) });
-
-        let { firstName, lastName, age } = req.body;
-
-        queryExecutor(queries.getUser(id)).then(user => {
+        const userToBeUpdated = await queryExecutor(queries.getUser(id));
+        if (userToBeUpdated.rowCount == 0) {
+            res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.FAILED_UPDATE }).send();
+        } else {
             if (firstName || lastName || age) {
-                if (!firstName) firstName = user.rows[0].firstname;
-                if (!lastName) lastName = user.rows[0].lastname;
-                if (!age) age = user.rows[0].age;
-                queryExecutor(queries.updateUser(firstName, lastName, age, id)).then(() => {
-                    res.json({
-                        message: `${constants.SUCCESS_UPDATE}`,
-                        firstName: firstName, lastName: lastName, age: age
-                    });
-                    res.send();
-                }).catch(err => { console.log(err) });
+                if (!firstName) firstName = userToBeUpdated.rows[0].firstname;
+                if (!lastName) lastName = userToBeUpdated.rows[0].lastname;
+                if (!age) age = userToBeUpdated.rows[0].age;
+                await queryExecutor(queries.updateUser(firstName, lastName, age, id));
+                res.status(StatusCodes.OK).json({ status: 'success', message: constants.SUCCESS_UPDATE}).send();
             } else {
-                res.json({
-                    message: `${constants.WRONG_DATA}`
-                });
-                res.send();
+                res.status(StatusCodes.BAD_REQUEST).json({ status: 'error', message: constants.WRONG_DATA }).send();
             }
-        });
+        }
     } catch (error) {
-        throw new errors.ServerError(`${constants.SERVER_ERROR}, ${error}`);
+        next(error);
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+            .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });
+    }
+}
+
+export const deleteUsers = async function (req, res, next) {
+    try {
+        await queryExecutor(queries.deleteUsers());
+        res.status(StatusCodes.OK).json({status: 'succes', messag: constants.USERS_DELETED}).send();
+    } catch (error) {
+        next(error);
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+        .send({ status: 'error', message: getReasonPhrase(StatusCodes.INTERNAL_SERVER_ERROR) });   
     }
 }
